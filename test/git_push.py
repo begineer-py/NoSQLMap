@@ -4,7 +4,9 @@ def git_push():
     try:
         subprocess.run(["git", "add", "."])
         subprocess.run(["git", "commit", "-m", "auto update"])
-        subprocess.run(["git", "push --force"])
+        command = ["git", "push", "--force"]
+        subprocess.run(command)
+        print(f"Git push command: {' '.join(command)}")
     except Exception as e:
         print(f"Git push failed: {e}")
 
