@@ -1,0 +1,9 @@
+couchdb 
+pbkdf2 
+pymongo 
+ipcalc 
+requests 
+certifi 
+neo4j
+redis
+beautifulsoup4
