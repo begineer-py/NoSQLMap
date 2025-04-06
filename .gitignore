@@ -223,3 +223,4 @@ pip-log.txt
 *.pyproj
 *.sln
 /.vs/ProjectSettings.json
+*/test
