@@ -11,6 +11,15 @@ from . import detect
 from . import attack
 from . import web_utils
 import sys
+import os
+
+# 嘗試導入載荷模組
+try:
+    import payloads
+    PAYLOADS_AVAILABLE = True
+except ImportError:
+    PAYLOADS_AVAILABLE = False
+
 def print_banner():
     """打印啟動橫幅"""
     print(get_message('STARTUP_BANNER'))
@@ -22,6 +31,7 @@ def main_menu():
     Returns:
         bool: 如果用戶選擇退出則返回False，否則返回True
     """
+    os.system('cls' if os.name == 'nt' else 'clear')
     print_banner()
     
     # 直接使用自定義菜單，不使用get_message
@@ -44,6 +54,8 @@ def main_menu():
     print("14. NoSQL Web應用攻擊")
     print("15. 掃描匿名訪問")
     print("16. 自動配置URL與目標主機")
+    if PAYLOADS_AVAILABLE:
+        print("17. 查看注入載荷")
     print("x. 退出")
     
     # 獲取用戶輸入
@@ -577,6 +589,11 @@ def main_menu():
         
         return True
     
+    elif PAYLOADS_AVAILABLE and select == "17":
+        # 查看注入載荷
+        display_payloads_menu()
+        return True
+    
     elif select.lower() == "q" or select.lower() == "x":
         return False
     
@@ -857,4 +874,146 @@ def couchdb_menu():
         print(f"[!] 執行CouchDB操作時出錯: {str(e)}")
     
     input("\n按Enter返回...")
-    return True 
+    return True
+
+def display_payloads_menu():
+    """
+    顯示注入載荷菜單並處理用戶選擇
+    """
+    if not PAYLOADS_AVAILABLE:
+        print("[!] 載荷模組不可用")
+        input("按任意鍵返回主菜單...")
+        return
+    
+    while True:
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print("\n=== 注入載荷查看 ===")
+        print("1. 列出所有載荷")
+        print("2. 查看MongoDB載荷")
+        print("3. 查看Neo4j載荷")
+        print("4. 查看Redis載荷")
+        print("5. 查看CouchDB載荷")
+        print("q. 返回主菜單")
+        
+        choice = input("\n> ")
+        
+        if choice == "1":
+            # 列出所有載荷
+            from nosqlmap_modules.main import list_available_payloads
+            list_available_payloads()
+            input("\n按任意鍵繼續...")
+        
+        elif choice == "2":
+            # 查看MongoDB載荷
+            display_platform_payloads("mongodb")
+        
+        elif choice == "3":
+            # 查看Neo4j載荷
+            display_platform_payloads("neo4j")
+        
+        elif choice == "4":
+            # 查看Redis載荷
+            display_platform_payloads("redis")
+        
+        elif choice == "5":
+            # 查看CouchDB載荷
+            display_platform_payloads("couchdb")
+        
+        elif choice.lower() == "q":
+            break
+        
+        else:
+            print("[!] 無效的選擇")
+            input("按任意鍵繼續...")
+
+def display_platform_payloads(platform):
+    """
+    顯示指定平台的載荷類別
+    
+    Args:
+        platform (str): 平台名稱，如'mongodb'
+    """
+    platform_payloads = payloads.get_platform_payloads(platform)
+    if not platform_payloads:
+        print(f"[!] {platform.upper()} 平台的載荷不可用")
+        input("按任意鍵返回...")
+        return
+    
+    while True:
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print(f"\n=== {platform.upper()} 載荷類別 ===")
+        
+        categories = list(platform_payloads.keys())
+        for i, category in enumerate(categories):
+            print(f"{i+1}. {category}")
+        print("q. 返回上級菜單")
+        
+        choice = input("\n> ")
+        
+        if choice.lower() == "q":
+            break
+        
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(categories):
+                category = categories[idx]
+                display_category_payloads(platform, category, platform_payloads[category])
+            else:
+                print("[!] 無效的選擇")
+                input("按任意鍵繼續...")
+        except ValueError:
+            print("[!] 無效的選擇")
+            input("按任意鍵繼續...")
+
+def display_category_payloads(platform, category, module):
+    """
+    顯示指定類別的載荷列表
+    
+    Args:
+        platform (str): 平台名稱，如'mongodb'
+        category (str): 類別名稱，如'auth_bypass'
+        module: 載荷模組
+    """
+    # 獲取模塊中的載荷列表
+    payload_lists = [attr for attr in dir(module) if attr.endswith('_PAYLOADS') and attr.isupper()]
+    
+    if not payload_lists:
+        print(f"[!] {platform.upper()} {category} 類別沒有可用的載荷列表")
+        input("按任意鍵返回...")
+        return
+    
+    while True:
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print(f"\n=== {platform.upper()} {category} 載荷列表 ===")
+        
+        for i, payload_list in enumerate(payload_lists):
+            try:
+                payloads_data = getattr(module, payload_list)
+                count = len(payloads_data) if isinstance(payloads_data, list) else "N/A"
+                print(f"{i+1}. {payload_list} ({count} 個載荷)")
+            except Exception as e:
+                print(f"{i+1}. {payload_list} (錯誤: {str(e)})")
+        
+        print("q. 返回上級菜單")
+        
+        choice = input("\n> ")
+        
+        if choice.lower() == "q":
+            break
+        
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(payload_lists):
+                payload_list = payload_lists[idx]
+                from nosqlmap_modules.main import show_payload_details
+                show_payload_details(f"{platform}:{category}:{payload_list}")
+                input("\n按任意鍵繼續...")
+            else:
+                print("[!] 無效的選擇")
+                input("按任意鍵繼續...")
+        except ValueError:
+            print("[!] 無效的選擇")
+            input("按任意鍵繼續...")
+        except Exception as e:
+            print(f"[!] 顯示載荷時出錯: {str(e)}")
+            input("按任意鍵繼續...") 

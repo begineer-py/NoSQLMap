@@ -5,12 +5,20 @@ NoSQLMap 主程序模塊 - 程序入口
 import sys
 import signal
 import argparse
+import os
 from i18n_utils import get_message, set_language
 from . import config
 from . import detect
 from . import menu
 from . import attack
 from . import web_utils
+
+# 嘗試導入載荷模組
+try:
+    import payloads
+    PAYLOADS_AVAILABLE = True
+except ImportError:
+    PAYLOADS_AVAILABLE = False
 
 def signal_handler(signal, frame):
     """
@@ -49,7 +57,11 @@ def build_parser():
     # 高級選項
     advanced = parser.add_argument_group(get_message('ADVANCED_OPTIONS'))
     advanced.add_argument('--victim', '-v', help=get_message('VICTIM_HELP'))
-    advanced.add_argument('--platform', choices=['MongoDB', 'Neo4j', 'CouchDB'], help=get_message('PLATFORM_HELP'))
+    if PAYLOADS_AVAILABLE:
+        platform_choices = ['MongoDB', 'Neo4j', 'CouchDB', 'Redis']
+    else:
+        platform_choices = ['MongoDB', 'Neo4j', 'CouchDB']
+    advanced.add_argument('--platform', choices=platform_choices, help=get_message('PLATFORM_HELP'))
     advanced.add_argument('--dbPort', '-dp', type=int, help=get_message('DBPORT_HELP'))
     advanced.add_argument('--webPort', '-wp', type=int, help=get_message('WEBPORT_HELP'))
     advanced.add_argument('--uri', '-u', help=get_message('URI_HELP'))
@@ -58,6 +70,14 @@ def build_parser():
     # 爬蟲選項
     advanced.add_argument('--crawl', '-c', type=int, dest='depth', 
                            help=get_message('CRAWL_HELP'))
+
+    # 載荷選項，僅當payloads可用時顯示
+    if PAYLOADS_AVAILABLE:
+        payload_group = parser.add_argument_group('Payload Options')
+        payload_group.add_argument('--list-payloads', action='store_true', 
+                                help='列出所有可用的注入載荷')
+        payload_group.add_argument('--show-payload', 
+                                help='顯示特定載荷的詳細信息，格式為平台:類別:名稱')
 
     return parser
 
@@ -114,6 +134,16 @@ def main(args=None):
     lang = config.language
     # 更新配置後恢復語言設置
     config.language = lang
+    
+    # 處理載荷相關參數
+    if PAYLOADS_AVAILABLE:
+        if hasattr(args, 'list_payloads') and args.list_payloads:
+            list_available_payloads()
+            return
+        
+        if hasattr(args, 'show_payload') and args.show_payload:
+            show_payload_details(args.show_payload)
+            return
     
     # 處理URL參數
     if args.url:
@@ -198,18 +228,128 @@ def main(args=None):
         # 構建完整 URL
         scheme = "https" if config.https == "ON" else "http"
         port = f":{config.webPort}" if (config.https == "ON" and config.webPort != 443) or (config.https == "OFF" and config.webPort != 80) else ""
-        start_url = f"{scheme}://{config.victim}{port}"
+        url = f"{scheme}://{config.victim}{port}{config.uri}"
         
-        if config.uri != "Not Set":
-            start_url += config.uri
-        
-        from . import crawl
-        crawl.crawl(start_url, args.depth)
+        print(f"[*] 開始以深度 {args.depth} 爬取 {url}...")
+        # TODO: 實現爬蟲功能
+        print("[!] 爬蟲功能尚未實現")
     
-    # 直接進入交互模式，無論是否提供了參數
     # 啟動主菜單
     while menu.main_menu():
         pass
+
+def list_available_payloads():
+    """
+    列出所有可用的注入載荷
+    """
+    if not PAYLOADS_AVAILABLE:
+        print("[!] 載荷模組不可用")
+        return
+    
+    print("\n=== 可用的注入載荷 ===")
+    
+    # 遍歷所有支持的平台
+    platforms = ["mongodb", "neo4j", "redis", "couchdb"]
+    found_payloads = False
+    
+    for platform in platforms:
+        platform_payloads = payloads.get_platform_payloads(platform)
+        if not platform_payloads:
+            continue
+            
+        found_payloads = True
+        print(f"\n## {platform.upper()} 載荷")
+        
+        # 列出該平台的所有類別
+        for category, module in platform_payloads.items():
+            print(f"\n### {category}")
+            
+            # 獲取該類別中的所有載荷列表
+            payload_lists = [attr for attr in dir(module) if attr.endswith('_PAYLOADS') and attr.isupper()]
+            
+            if not payload_lists:
+                print("  - 無可用載荷")
+                continue
+                
+            # 列出該類別中的所有載荷列表
+            for payload_list in payload_lists:
+                try:
+                    payloads_data = getattr(module, payload_list)
+                    count = len(payloads_data) if isinstance(payloads_data, list) else "N/A"
+                    print(f"  - {payload_list} ({count} 個載荷)")
+                except Exception as e:
+                    print(f"  - {payload_list} (錯誤: {str(e)})")
+    
+    if not found_payloads:
+        print("[!] 未找到任何載荷")
+
+def show_payload_details(payload_spec):
+    """
+    顯示特定載荷的詳細信息
+    
+    Args:
+        payload_spec (str): 載荷規格，格式為平台:類別:名稱
+    """
+    if not PAYLOADS_AVAILABLE:
+        print("[!] 載荷模組不可用")
+        return
+    
+    # 解析載荷規格
+    try:
+        parts = payload_spec.split(':')
+        if len(parts) != 3:
+            print("[!] 無效的載荷規格，格式應為：平台:類別:名稱")
+            print("    例如: mongodb:auth_bypass:AUTH_BYPASS_PAYLOADS")
+            return
+            
+        platform, category, payload_name = parts
+        
+        # 獲取平台載荷
+        platform_payloads = payloads.get_platform_payloads(platform)
+        if not platform_payloads:
+            print(f"[!] 平台 '{platform}' 的載荷不可用")
+            return
+            
+        # 獲取類別模塊
+        if category not in platform_payloads:
+            print(f"[!] 平台 '{platform}' 中找不到類別 '{category}'")
+            print(f"    可用類別: {', '.join(platform_payloads.keys())}")
+            return
+            
+        module = platform_payloads[category]
+        
+        # 獲取載荷列表
+        if not hasattr(module, payload_name):
+            print(f"[!] 在 '{platform}/{category}' 中找不到載荷 '{payload_name}'")
+            payload_lists = [attr for attr in dir(module) if attr.endswith('_PAYLOADS') and attr.isupper()]
+            if payload_lists:
+                print(f"    可用載荷: {', '.join(payload_lists)}")
+            else:
+                print(f"    該類別中沒有可用的載荷")
+            return
+            
+        payloads_data = getattr(module, payload_name)
+        
+        # 顯示載荷詳情
+        print(f"\n=== {platform.upper()} {category} {payload_name} ===\n")
+        
+        if isinstance(payloads_data, list):
+            print(f"共 {len(payloads_data)} 個載荷:\n")
+            for i, payload in enumerate(payloads_data):
+                print(f"{i+1}. {repr(payload)}")
+        elif isinstance(payloads_data, dict):
+            print(f"共 {len(payloads_data)} 個載荷:\n")
+            for key, value in payloads_data.items():
+                print(f"- {key}: {repr(value)}")
+        else:
+            print(f"載荷值: {repr(payloads_data)}")
+            
+    except Exception as e:
+        print(f"[!] 顯示載荷時出錯: {str(e)}")
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
+    main(args)
 
 # 確保函數可以被導入
 __all__ = ['build_parser', 'main'] 
